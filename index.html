@@ -3,10 +3,6 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate" />
-  <meta http-equiv="Pragma" content="no-cache" />
-  <meta http-equiv="Expires" content="0" />
-  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Cpath fill='%2322d3ee' d='M4 40c10 0 10-8 20-8s10 8 20 8 10-8 16-8v16H4z'/%3E%3C/svg%3E">
   <title>PriceWave</title>
   <style>
     :root{ --bg:#0b1220; --panel:#0f172a; --border:#1f2a44; --text:#e5e7eb; --muted:#93a0b8; --accent:#22d3ee; --danger:#f43f5e; --grid:#152036; --grid2:#1b2a47; }
@@ -19,7 +15,6 @@
   </style>
 </head>
 <body>
-  <div id="version" style="text-align:center; margin:8px 0 0; font-size:12px; color:#93a0b8;"></div>
   <div class="container">
     <h1>PriceWave</h1>
     <div class="card">
@@ -51,12 +46,17 @@
 <script>
 // Placeholder minimal JS so file exists; your full version is already in canvas & zips I provided.
 console.log('PriceWave');
-// ---- Version stamp (bump each release) ----
-const VERSION = "2025.08.15-2"; // yyyymmdd-build
 document.addEventListener("DOMContentLoaded", () => {
-  const el = document.getElementById("version");
-  if (el) el.textContent = `PriceWave • v${VERSION}`;
+  const y = document.getElementById("year");
+  if (y) y.textContent = new Date().getFullYear();
 });
 </script>
+<footer style="text-align:center; font-size:12px; color:#93a0b8; margin:20px 0;">
+  <p>© <span id="year"></span> PriceWave • All data sourced from public market APIs.</p>
+  <p>
+    <a href="#" onclick="alert('We respect your privacy. No personal data is stored. API keys remain in your browser.'); return false;">Privacy</a> |
+    <a href="#" onclick="alert('PriceWave is a simple stock visualization tool for personal use. Data is not guaranteed to be accurate.'); return false;">About</a>
+  </p>
+</footer>
 </body>
 </html>
