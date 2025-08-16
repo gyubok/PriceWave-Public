@@ -4,12 +4,45 @@
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>PriceWave</title>
+
+  <!-- cache nudger -->
+  <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate" />
+  <meta http-equiv="Pragma" content="no-cache" />
+  <meta http-equiv="Expires" content="0" />
+  <!-- tiny favicon -->
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Cpath fill='%2322d3ee' d='M4 40c10 0 10-8 20-8s10 8 20 8 10-8 16-8v16H4z'/%3E%3C/svg%3E">
+
   <style>
-    :root{ --bg:#0b1220; --panel:#0f172a; --border:#1f2a44; --text:#e5e7eb; --muted:#93a0b8; --accent:#22d3ee; --danger:#f43f5e; --grid:#152036; --grid2:#1b2a47; }
-    *{box-sizing:border-box} body{margin:0; font:14px/1.4 system-ui,-apple-system,Segoe UI,Roboto,Ubuntu,Cantarell,'Helvetica Neue',Arial,sans-serif; background:var(--bg); color:var(--text)}
-    .container{max-width:1100px; margin:0 auto; padding:24px}
+    :root{
+      --bg:#0b1220; --panel:#0f172a; --border:#1f2a44; --text:#e5e7eb; --muted:#93a0b8;
+      --accent:#22d3ee; --danger:#f43f5e; --grid:#152036; --grid2:#1b2a47;
+    }
+    *{box-sizing:border-box}
+    body{margin:0; font:14px/1.4 system-ui, -apple-system, Segoe UI, Roboto, Ubuntu, Cantarell, Arial, sans-serif; background:var(--bg); color:var(--text);}
+    .container{max-width:1100px; margin:0 auto; padding:24px;}
+    h1{font-size:24px; margin:0 0 6px; font-weight:700; letter-spacing:.2px}
+    .sub{color:var(--muted); margin-bottom:16px}
     .card{background:var(--panel); border:1px solid var(--border); border-radius:16px; padding:16px; margin-bottom:12px}
+    label{font-size:12px; color:#a7b3cc}
+    input{border:1px solid #233252; background:#0b1324; color:var(--text); border-radius:10px; padding:10px 12px; width:100%}
     .row{display:flex; gap:8px; align-items:center}
+    .grid2{display:grid; gap:12px; grid-template-columns:1fr}
+    @media (min-width: 760px){ .grid2{grid-template-columns:1fr 1fr;} }
+    @media (min-width: 980px){ .grid3{display:grid; gap:12px; grid-template-columns:1fr 1fr 1fr;} }
+    button{border:1px solid #233252; border-radius:10px; padding:10px 12px; background:#0b1324; color:var(--text); cursor:pointer}
+    button.primary{background:var(--accent); color:#00131a; border-color:#1dcfe9; font-weight:600}
+    button.danger{background:#2a0f16; color:#fecdd3; border-color:#7f1d1d}
+    button.ghost{background:#0b1324}
+    button:disabled{opacity:.6; cursor:not-allowed}
+    .muted{color:var(--muted); font-size:12px; margin-top:6px}
+    .ticker-item{display:flex; align-items:center; gap:10px; border:1px solid var(--border); border-radius:12px; padding:10px}
+    .dot{width:10px; height:10px; border-radius:999px}
+    .mono{font-family:ui-monospace, SFMono-Regular, Menlo, Consolas, 'Liberation Mono', monospace}
+    .error{background:#2a0f16; color:#fecaca; border:1px solid #7f1d1d; border-radius:12px; padding:12px}
+    .chartwrap{width:100%; overflow-x:auto; position:relative}
+    .legend{display:flex; gap:16px; align-items:center; padding:6px 0 0 6px}
+    .legend .entry{display:flex; align-items:center; gap:6px}
+    .pill{display:inline-block; padding:4px 8px; border-radius:999px; border:1px solid var(--border); font-size:12px; color:#bdd0f8; background:#0b1324}
     .tooltip{position:absolute; pointer-events:none; background:#0b1324; color:#dbeafe; padding:6px 8px; font-size:12px; border:1px solid #2a3a5f; border-radius:8px; transform:translate(-50%,-110%); white-space:nowrap; box-shadow:0 8px 24px rgba(0,0,0,.35)}
     .xline{stroke:#3b4d75; stroke-dasharray:2 3}
   </style>
@@ -17,46 +50,342 @@
 <body>
   <div class="container">
     <h1>PriceWave</h1>
+    <div class="sub">Overlay and compare stock prices with toggles, reordering, date range, % change, log scale, tooltips, and CSV export.</div>
+
+    <div class="card grid2">
+      <div>
+        <label>Alpha Vantage API key</label>
+        <div class="row" style="margin-top:6px">
+          <input id="apikey" placeholder="Paste your API key (optional)" />
+          <button id="clearKey" class="ghost">Clear</button>
+        </div>
+        <div class="muted">If empty, uses the public <b>demo</b> key (reliable for <b>MSFT</b> only; ~5 req/min).</div>
+      </div>
+      <div>
+        <label>Add ticker</label>
+        <div class="row" style="margin-top:6px">
+          <input id="ticker" placeholder="e.g., AAPL, MSFT, NVDA" />
+          <button id="add" class="primary">Add</button>
+        </div>
+        <div class="muted">Tip: If you hit a rate limit, wait ~12–15s or use your key.</div>
+      </div>
+    </div>
+
     <div class="card">
       <div class="row" style="justify-content:space-between; margin-bottom:8px">
         <div class="row" style="gap:8px; flex-wrap:wrap">
-          <span id="yUnit">Y‑axis: USD (Close)</span>
-          <span id="dateSummary"></span>
+          <div style="font-weight:700; letter-spacing:.2px">Chart</div>
+          <span class="pill" id="yUnit">Y-axis: USD (Close)</span>
+          <span class="pill" id="dateSummary"></span>
         </div>
         <div class="row" style="gap:6px; flex-wrap:wrap">
-          <button id="normalize">Toggle % Change</button>
-          <button id="logscale">Toggle Log Scale</button>
-          <button id="exportCsv">Export CSV</button>
+          <button id="normalize" class="ghost">Toggle % Change</button>
+          <button id="logscale" class="ghost">Toggle Log Scale</button>
+          <button id="exportCsv" class="ghost">Export CSV</button>
         </div>
       </div>
-      <div class="row">
-        <input id="apikey" placeholder="API key (optional)">
-        <button id="clearKey">Clear</button>
+
+      <div class="grid3" style="margin-bottom:8px">
+        <div>
+          <label>Start date</label>
+          <input id="startDate" type="date" />
+        </div>
+        <div>
+          <label>End date</label>
+          <input id="endDate" type="date" />
+        </div>
+        <div style="display:flex; align-items:end; gap:8px">
+          <button id="applyRange" class="ghost">Apply</button>
+          <button id="clearRange" class="ghost">Clear</button>
+        </div>
       </div>
-      <div class="row" style="margin-top:6px">
-        <input id="ticker" placeholder="e.g., AAPL, MSFT, NVDA" />
-        <button id="add">Add</button>
+
+      <div class="chartwrap">
+        <svg id="chart" viewBox="0 0 900 380" style="width:100%; height:380px; background:#0b1324; border:1px solid var(--border); border-radius:12px"></svg>
+        <div id="tt" class="tooltip" style="display:none"></div>
       </div>
-      <svg id="chart" viewBox="0 0 900 380" style="width:100%; height:380px; background:#0b1324; border:1px solid #1f2a44; border-radius:12px"></svg>
-      <div id="legend" class="row" style="gap:16px; flex-wrap:wrap"></div>
-      <div id="tt" class="tooltip" style="display:none"></div>
-      <div id="err" style="display:none; color:#fecaca"></div>
+      <div id="legend" class="legend"></div>
     </div>
+
+    <div id="err" class="error" style="display:none"></div>
+
+    <div class="card">
+      <div style="font-weight:700; margin-bottom:8px">Manage Tickers</div>
+      <div id="list" class="grid2" style="grid-template-columns:1fr"></div>
+      <div id="empty" class="muted">No tickers yet. Add one above to get started.</div>
+    </div>
+
+    <div id="version" style="text-align:center; margin:8px 0 0; font-size:12px; color:#93a0b8;"></div>
+    <footer style="text-align:center; font-size:12px; color:#93a0b8; margin:20px 0;">
+      <p>© <span id="year"></span> PriceWave • All data sourced from public market APIs.</p>
+      <p>
+        <a href="#" onclick="alert('We respect your privacy. No personal data is stored. API keys remain in your browser.'); return false;">Privacy</a> |
+        <a href="#" onclick="alert('PriceWave is a simple stock visualization tool for personal use. Data is not guaranteed to be accurate.'); return false;">About</a>
+      </p>
+    </footer>
   </div>
+
 <script>
-// Placeholder minimal JS so file exists; your full version is already in canvas & zips I provided.
-console.log('PriceWave');
-document.addEventListener("DOMContentLoaded", () => {
-  const y = document.getElementById("year");
-  if (y) y.textContent = new Date().getFullYear();
-});
+(function(){
+  // ---- Version / year / hard reload hotkey ----
+  const VERSION = "2025.08.15-3";
+  document.addEventListener("DOMContentLoaded", () => {
+    const v = document.getElementById("version"); if (v) v.textContent = `PriceWave • v${VERSION}`;
+    const y = document.getElementById("year"); if (y) y.textContent = new Date().getFullYear();
+  });
+  window.addEventListener("keydown", (e) => { if (e.shiftKey && (e.key === "R" || e.key === "r")) location.reload(); });
+
+  const COLORS = ["#60a5fa","#34d399","#f87171","#a78bfa","#fb923c","#22d3ee","#fb7185","#818cf8"];
+  const state = {
+    apiKey: localStorage.getItem('sv_apiKey') || '',
+    tickers: JSON.parse(localStorage.getItem('sv_tickers') || '[]'),
+    series: {},
+    loading: '',
+    error: '',
+    pctMode: localStorage.getItem('sv_pctMode') === '1',
+    logMode: localStorage.getItem('sv_logMode') === '1',
+    queue: Promise.resolve(0),
+    range: JSON.parse(localStorage.getItem('sv_range') || 'null')
+  };
+
+  const $ = (id) => document.getElementById(id);
+  const $key=$('apikey'), $clearKey=$('clearKey'), $ticker=$('ticker'), $add=$('add');
+  const $normalize=$('normalize'), $log=$('logscale'), $yUnit=$('yUnit'), $dateSummary=$('dateSummary');
+  const $chart=$('chart'), $legend=$('legend'), $list=$('list'), $empty=$('empty'), $err=$('err');
+  const $start=$('startDate'), $end=$('endDate'), $apply=$('applyRange'), $clear=$('clearRange');
+  const $tt=$('tt');
+
+  $key.value = state.apiKey;
+  $key.addEventListener('input', ()=>{ state.apiKey=$key.value.trim(); localStorage.setItem('sv_apiKey', state.apiKey); });
+  $clearKey.addEventListener('click', ()=>{ state.apiKey=''; $key.value=''; localStorage.setItem('sv_apiKey',''); });
+
+  $add.addEventListener('click', addTicker);
+  $ticker.addEventListener('keydown', e=>{ if(e.key==='Enter') addTicker(); });
+
+  $normalize.addEventListener('click', ()=>{ state.pctMode=!state.pctMode; localStorage.setItem('sv_pctMode', state.pctMode?'1':'0'); draw(); });
+  $log.addEventListener('click', ()=>{ state.logMode=!state.logMode; localStorage.setItem('sv_logMode', state.logMode?'1':'0'); draw(); });
+  $apply.addEventListener('click', ()=>{ state.range = { start: $start.value || null, end: $end.value || null }; localStorage.setItem('sv_range', JSON.stringify(state.range)); draw(); });
+  $clear.addEventListener('click', ()=>{ state.range = null; localStorage.removeItem('sv_range'); $start.value=''; $end.value=''; draw(); });
+
+  function setError(msg, raw){
+    state.error = msg || '';
+    if(state.error){
+      $err.innerHTML = raw ? msg + "<div class='muted' style='margin-top:6px;word-break:break-word'>" + raw + "</div>" : msg;
+      $err.style.display = 'block';
+    } else $err.style.display = 'none';
+  }
+
+  async function addTicker(){
+    const sym = ($ticker.value||'').trim().toUpperCase();
+    if(!sym) return;
+    if(state.tickers.some(t=>t.symbol===sym)){ setError(sym+' already added.'); return; }
+    setError('');
+    state.loading = sym; drawList();
+    try{
+      const ok = await searchSymbol(sym);
+      if(!ok){ setError('Ticker not found. Try exact symbol (e.g., MSFT).'); return; }
+      const pts = await throttled(()=>fetchSeries(sym, state.apiKey || 'demo'));
+      const color = COLORS[state.tickers.length % COLORS.length];
+      state.tickers.push({symbol:sym, color, visible:true});
+      state.series[sym]=pts;
+      localStorage.setItem('sv_tickers', JSON.stringify(state.tickers));
+      $ticker.value='';
+      draw();
+    }catch(e){ setError((e.msg||e.message||e)+'', e.raw||''); }
+    finally{ state.loading=''; drawList(); }
+  }
+
+  function remove(sym){ state.tickers=state.tickers.filter(t=>t.symbol!==sym); delete state.series[sym];
+    localStorage.setItem('sv_tickers', JSON.stringify(state.tickers)); draw(); drawList(); }
+  function toggle(sym){ state.tickers=state.tickers.map(t=> t.symbol===sym? {...t,visible:!t.visible}:t);
+    localStorage.setItem('sv_tickers', JSON.stringify(state.tickers)); draw(); drawList(); }
+  function move(sym, dir){ const i=state.tickers.findIndex(t=>t.symbol===sym); if(i<0) return; const j=i+(dir==='up'?-1:1);
+    if(j<0||j>=state.tickers.length) return; const arr=state.tickers; [arr[i],arr[j]]=[arr[j],arr[i]]; state.tickers=arr;
+    localStorage.setItem('sv_tickers', JSON.stringify(state.tickers)); drawList(); draw(); }
+  async function refresh(sym){ state.loading=sym; drawList(); try{ const pts=await throttled(()=>fetchSeries(sym, state.apiKey || 'demo')); state.series[sym]=pts; draw(); } catch(e){ setError((e.msg||e.message||e)+'', e.raw||''); } finally{ state.loading=''; drawList(); } }
+
+  async function throttled(fn){
+    state.queue = state.queue.then(ts => new Promise(res => {
+      const now=Date.now(); const wait=Math.max(0,12000-(now-ts)); setTimeout(()=>res(Date.now()), wait);
+    }));
+    const ts = await state.queue;
+    try{ return await fn(); } finally{}
+  }
+  async function searchSymbol(key){
+    try{
+      const url=new URL('https://www.alphavantage.co/query');
+      url.searchParams.set('function','SYMBOL_SEARCH');
+      url.searchParams.set('keywords',key);
+      url.searchParams.set('apikey',state.apiKey||'demo');
+      const r=await fetch(url); const j=await r.json();
+      return (j.bestMatches||[]).some(m=>m['1. symbol']===key);
+    } catch { return true; }
+  }
+  async function fetchSeries(ticker, apiKey){
+    const url=new URL('https://www.alphavantage.co/query');
+    url.searchParams.set('function','TIME_SERIES_DAILY_ADJUSTED');
+    url.searchParams.set('symbol',ticker);
+    url.searchParams.set('apikey',apiKey);
+    url.searchParams.set('outputsize','compact');
+    const res = await fetch(url.toString());
+    if(!res.ok) throw {msg:'HTTP '+res.status, raw:''};
+    const txt = await res.text(); let data={};
+    try{ data=JSON.parse(txt); }catch{ throw {msg:'Invalid JSON returned by API.', raw:txt.slice(0,400)}; }
+    if(data['Error Message']) throw {msg:'Invalid ticker symbol.', raw:data['Error Message']};
+    if(data['Information']) throw {msg:'API info: likely throttled or invalid key.', raw:data['Information']};
+    if(data['Note']) throw {msg:'Rate limit reached. Please wait ~15s or use your key.', raw:data['Note']};
+    const series = data['Time Series (Daily)'];
+    if(!series) throw {msg:'Unexpected API response', raw:txt.slice(0,400)};
+    return Object.entries(series).map(([date,v])=>({date, close:Number(v['4. close'])})).sort((a,b)=> new Date(a.date)-new Date(b.date));
+  }
+
+  function mergeDates(){ const s=new Set(); Object.values(state.series).forEach(pts=> pts.forEach(p=> s.add(p.date))); return Array.from(s).sort((a,b)=> new Date(a)-new Date(b)); }
+  function withinRange(d){ if(!state.range) return true; const x=new Date(d).getTime(); const a=state.range.start? new Date(state.range.start).getTime(): -Infinity; const b=state.range.end? new Date(state.range.end).getTime(): Infinity; return x>=a && x<=b; }
+
+  function drawList(){
+    $list.innerHTML=''; if(state.tickers.length===0){ $empty.style.display='block'; return; } $empty.style.display='none';
+    state.tickers.forEach(t=>{
+      const row=document.createElement('div'); row.className='ticker-item';
+      row.innerHTML = `<div class="dot" style="background:${t.color}"></div><div class="mono" style="width:72px">${t.symbol}</div><div style="margin-left:auto"></div>`;
+      const R=row.children[2];
+      const mk=(txt,cls,fn)=>{ const b=document.createElement('button'); b.textContent=txt; b.className=cls; b.onclick=fn; return b; };
+      R.appendChild(mk(state.loading===t.symbol?'Refreshing…':'Refresh','ghost', ()=>refresh(t.symbol))); R.lastChild.disabled=state.loading===t.symbol;
+      R.appendChild(mk(t.visible?'Hide':'Show','ghost', ()=>toggle(t.symbol)));
+      R.appendChild(mk('Up','ghost', ()=>move(t.symbol,'up')));
+      R.appendChild(mk('Down','ghost', ()=>move(t.symbol,'down')));
+      R.appendChild(mk('Delete','danger', ()=>remove(t.symbol)));
+      $list.appendChild(row);
+    });
+  }
+
+  function draw(){
+    $yUnit.textContent = state.pctMode ? 'Y-axis: % change' : 'Y-axis: USD (Close)';
+    const allDates = mergeDates();
+    const dates = allDates.filter(withinRange);
+    const vis = state.tickers.filter(t=>t.visible).map(t=>t.symbol);
+    const aligned = Object.fromEntries(vis.map(sym=> [sym, []]));
+    dates.forEach(d => { vis.forEach(sym => {
+      const hit=(state.series[sym]||[]).find(p=> p.date===d); aligned[sym].push(hit? hit.close : null);
+    }); });
+
+    if(state.pctMode){
+      vis.forEach(sym=>{
+        const arr=aligned[sym]; const base=arr.find(v=> v!=null);
+        if(base!=null){ for(let i=0;i<arr.length;i++){ arr[i] = arr[i]==null? null : ((arr[i]-base)/base*100); } }
+      });
+    }
+
+    let allVals = vis.flatMap(sym => (aligned[sym]||[]).filter(v=>v!=null));
+    if(state.logMode){ allVals = allVals.filter(v=> v>0); }
+    const minV = allVals.length? Math.min(...allVals) : 0;
+    const maxV = allVals.length? Math.max(...allVals) : 1;
+    const pad=40, w=900, h=380;
+    const yMin = state.logMode ? Math.max(0.0001, minV*0.95) : (minV - (maxV-minV)*0.05);
+    const yMax = state.logMode ? maxV*1.05 : (maxV + (maxV-minV)*0.05);
+    const x = (i) => pad + (i * (w-2*pad)) / Math.max(1, dates.length-1);
+    const y = state.logMode
+      ? (v) => { const log = (z)=> Math.log(z); const a=log(yMin), b=log(yMax); return h - pad - ((log(v) - a) * (h - 2*pad)) / Math.max(1, (b - a)); }
+      : (v) => h - pad - ((v - yMin) * (h - 2*pad)) / Math.max(1, (yMax - yMin));
+
+    const svg=[];
+    svg.push(`<rect x="${pad}" y="${pad}" width="${w-2*pad}" height="${h-2*pad}" fill="none" stroke="${getComputedStyle(document.body).getPropertyValue('--grid2').trim()}" />`);
+
+    for(let k=0;k<5;k++){
+      const t=k/4;
+      let val = state.logMode ? Math.exp(Math.log(yMin) + t*(Math.log(yMax)-Math.log(yMin))) : (yMin + t*(yMax-yMin));
+      const yy = y(val);
+      const label = state.pctMode ? (val.toFixed(1)+'%') : ('$'+val.toFixed(2));
+      svg.push(`<line x1="${pad}" x2="${w-pad}" y1="${yy}" y2="${yy}" stroke="${getComputedStyle(document.body).getPropertyValue('--grid').trim()}" />`);
+      svg.push(`<text x="8" y="${yy+4}" font-size="10" fill="#9fb3d8">${label}</text>`);
+    }
+
+    const step = dates.length ? Math.max(1, Math.floor(dates.length/8)) : 1;
+    for(let i=0;i<dates.length;i+=step){
+      svg.push(`<line x1="${x(i)}" x2="${x(i)}" y1="${h-pad}" y2="${h-pad+4}" stroke="#3b4d75" />`);
+      svg.push(`<text x="${x(i)}" y="${h-pad+16}" font-size="10" text-anchor="middle" fill="#9fb3d8">${dates[i].slice(5)}</text>`);
+    }
+
+    function pathFor(arr){ let d='', started=false; for(let i=0;i<arr.length;i++){ const v=arr[i];
+      if(v==null || (state.logMode && v<=0)){ started=false; continue; } const cmd=started?'L':'M'; started=true; d += `${cmd}${x(i)},${y(v)}`; } return d; }
+    state.tickers.forEach(t=>{ if(!t.visible) return; const arr = aligned[t.symbol]||[]; svg.push(`<path d="${pathFor(arr)}" fill="none" stroke="${t.color}" stroke-width="2.2" />`); });
+
+    svg.push(`<line id="hoverX" class="xline" x1="0" x2="0" y1="${pad}" y2="${h-pad}" style="display:none" />`);
+
+    $chart.innerHTML = svg.join('');
+
+    $legend.innerHTML = '';
+    state.tickers.filter(t=>t.visible).forEach(t=>{
+      const e = document.createElement('div'); e.className='entry';
+      e.innerHTML = `<div class="dot" style="background:${t.color}"></div><div class="mono">${t.symbol}</div>`;
+      $legend.appendChild(e);
+    });
+
+    if(dates.length){
+      const start = dates[0], end = dates[dates.length-1];
+      $dateSummary.textContent = `${start} → ${end}`;
+      if(!$start.value && !$end.value && state.range){
+        $start.value = state.range.start || ''; $end.value = state.range.end || '';
+      }
+    } else { $dateSummary.textContent = ''; }
+
+    const hoverX = document.getElementById('hoverX');
+    const bbox = $chart.getBoundingClientRect();
+    function nearestIndex(px){
+      const localX = px - bbox.left;
+      const i = Math.round((localX - 40) * Math.max(1, dates.length-1) / Math.max(1, (bbox.width - 80)));
+      return Math.max(0, Math.min(dates.length-1, i));
+    }
+    function showTT(i){
+      if(!dates.length) return;
+      const dt = dates[i];
+      const rows = vis.map(sym=>{
+        const arr = aligned[sym]; const v = arr[i];
+        if(v==null || (state.logMode && v<=0)) return null;
+        const col = state.tickers.find(t=>t.symbol===sym).color;
+        return `<div><span style="display:inline-block;width:10px;height:10px;background:${col};border-radius:50%;margin-right:6px"></span><b>${sym}</b>: ${state.pctMode ? v.toFixed(2)+'%' : '$'+v.toFixed(2)}</div>`;
+      }).filter(Boolean).join('');
+      if(!rows){ $tt.style.display='none'; hoverX.style.display='none'; return; }
+      $tt.innerHTML = `<div class="mono" style="margin-bottom:4px">${dt}</div>${rows}`;
+      $tt.style.display = 'block';
+      const px = x(i) / 900 * bbox.width + bbox.left;
+      const py = bbox.top + 60;
+      $tt.style.left = px+'px'; $tt.style.top = py+'px';
+      hoverX.setAttribute('x1', x(i)); hoverX.setAttribute('x2', x(i)); hoverX.style.display='block';
+    }
+    function hideTT(){ $tt.style.display='none'; hoverX.style.display='none'; }
+
+    $chart.onmousemove = (e)=>{ showTT(nearestIndex(e.clientX)); };
+    $chart.onmouseleave = hideTT;
+
+    document.getElementById('exportCsv').onclick = ()=>{
+      let header = ['date', ...vis].join(',');
+      let lines = [header];
+      for(let i=0;i<dates.length;i++){
+        const vals = vis.map(sym => {
+          const v = aligned[sym][i];
+          return (v==null || (state.logMode && v<=0)) ? '' : v.toFixed(4);
+        });
+        lines.push([dates[i], ...vals].join(','));
+      }
+      const blob = new Blob([lines.join('\n')], {type:'text/csv'});
+      const a = document.createElement('a');
+      a.href = URL.createObjectURL(blob);
+      a.download = 'pricewave_export.csv';
+      a.click();
+      URL.revokeObjectURL(a.href);
+    };
+  }
+
+  (async function boot(){
+    drawList();
+    if(state.tickers.length===0){ draw(); return; }
+    for(const t of state.tickers){
+      try{ const pts = await throttled(()=>fetchSeries(t.symbol, state.apiKey || 'demo')); state.series[t.symbol]=pts; } catch {}
+    }
+    if(state.range){ $start.value = state.range.start || ''; $end.value = state.range.end || ''; }
+    draw();
+  })();
+})();
 </script>
-<footer style="text-align:center; font-size:12px; color:#93a0b8; margin:20px 0;">
-  <p>© <span id="year"></span> PriceWave • All data sourced from public market APIs.</p>
-  <p>
-    <a href="#" onclick="alert('We respect your privacy. No personal data is stored. API keys remain in your browser.'); return false;">Privacy</a> |
-    <a href="#" onclick="alert('PriceWave is a simple stock visualization tool for personal use. Data is not guaranteed to be accurate.'); return false;">About</a>
-  </p>
-</footer>
 </body>
 </html>
