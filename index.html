@@ -14,9 +14,8 @@
 
   <style>
     :root{
-      --bg:#0b1220; --panel:#0f172a; --border:#1f2a44; --text:#e5e7eb;
-      --muted:#93a0b8; --accent:#22d3ee; --danger:#f43f5e;
-      --grid:#152036; --grid2:#1b2a47;
+      --bg:#0b1220; --panel:#0f172a; --border:#1f2a44; --text:#e5e7eb; --muted:#93a0b8;
+      --accent:#22d3ee; --danger:#f43f5e; --grid:#152036; --grid2:#1b2a47;
     }
     *{box-sizing:border-box}
     body{margin:0; font:14px/1.4 system-ui,-apple-system,Segoe UI,Roboto,Ubuntu,Cantarell,Arial,sans-serif; background:var(--bg); color:var(--text);} 
@@ -282,34 +281,298 @@
     } else $err.style.display = 'none';
   }
 
-  async function addTicker(){
-  const sym = ($ticker.value||'').trim().toUpperCase();
-  if(!sym) return;
-  if(state.tickers.some(t=>t.symbol===sym)){
-    setError(sym+' already added.');
-    return;
+  // Basic symbol check that honors provider fallbacks
+  async function searchSymbol(sym){
+    try{
+      const data = await fetchSeries(sym, state.apiKey || 'demo');
+      return Array.isArray(data) && data.length > 0;
+    } catch {
+      return false;
+    }
   }
-  setError('');
-  state.loading = sym; drawList();
-  try{
-    // Fetch once via unified provider fallback
-    const pts = await debounce(() => fetchSeries(sym, state.apiKey || 'demo'));
-    if(!pts || !pts.length){
-      setError('Ticker not found for selected source.');
+
+  async function addTicker(){
+    const sym = ($ticker.value||'').trim().toUpperCase();
+    if(!sym) return;
+    if(state.tickers.some(t=>t.symbol===sym)){
+      setError(sym+' already added.');
       return;
     }
-    const color = COLORS[state.tickers.length % COLORS.length];
-    state.tickers.push({symbol:sym, color, visible:true});
-    state.series[sym] = pts;
-    localStorage.setItem('sv_tickers', JSON.stringify(state.tickers));
-    $ticker.value = '';
-    draw();
-  }catch(e){
-    setError((e.msg||e.message||e)+'');
-  }finally{
-    state.loading = '';
-    drawList();
+    setError('');
+    state.loading = sym; drawList();
+    try{
+      // Fetch once via unified provider fallback
+      const pts = await debounce(() => fetchSeries(sym, state.apiKey || 'demo'));
+      if(!pts || !pts.length){
+        setError('Ticker not found for selected source.');
+        return;
+      }
+      const color = COLORS[state.tickers.length % COLORS.length];
+      state.tickers.push({symbol:sym, color, visible:true});
+      state.series[sym] = pts;
+      localStorage.setItem('sv_tickers', JSON.stringify(state.tickers));
+      $ticker.value = '';
+      draw();
+    }catch(e){
+      setError((e.msg||e.message||e)+'');
+    }finally{
+      state.loading = '';
+      drawList();
+    }
   }
+
+  function remove(sym){ state.tickers=state.tickers.filter(t=>t.symbol!==sym); delete state.series[sym];
+    localStorage.setItem('sv_tickers', JSON.stringify(state.tickers)); draw(); drawList(); }
+  function toggle(sym){ state.tickers=state.tickers.map(t=> t.symbol===sym? {...t,visible:!t.visible}:t);
+    localStorage.setItem('sv_tickers', JSON.stringify(state.tickers)); draw(); drawList(); }
+  function move(sym, dir){ const i=state.tickers.findIndex(t=>t.symbol===sym); if(i<0) return; const j=i+(dir==='up'?-1:1);
+    if(j<0||j>=state.tickers.length) return; const arr=state.tickers; [arr[i],arr[j]]=[arr[j],arr[i]]; state.tickers=arr;
+    localStorage.setItem('sv_tickers', JSON.stringify(state.tickers)); drawList(); draw(); }
+  async function refresh(sym){ state.loading=sym; drawList(); try{ const pts=await debounce(()=>fetchSeries(sym, state.apiKey || 'demo')); state.series[sym]=pts; draw(); } catch(e){ setError((e.msg||e.message||e)+'', e.raw||''); } finally{ state.loading=''; drawList(); } }
+
+  function refetchVisibleThenDraw(){
+    Promise.all(state.tickers.map(async t => {
+      if(!t.visible) return;
+      try { state.series[t.symbol] = await fetchSeries(t.symbol, state.apiKey || 'demo'); } catch {}
+    })).then(draw);
+  }
+
+  // --- very light debounce ---
+  let _last = 0;
+  async function debounce(fn, ms=250){
+    const now = Date.now(), wait = Math.max(0, ms-(now-_last));
+    await new Promise(r=>setTimeout(r, wait)); _last = Date.now(); return fn();
+  }
+
+  // -------- Data providers --------
+  // Stooq CSV helper
+  function stooqSymbol(sym){ return `${sym.toLowerCase()}.us`; }
+  async function fetchStooq(sym){
+    const url = `https://stooq.com/q/d/l/?s=${encodeURIComponent(stooqSymbol(sym))}&i=d`;
+    const res = await fetch(url, { cache: 'no-store' });
+    if (!res.ok) throw new Error('Stooq HTTP '+res.status);
+    const csv = await res.text();
+    const lines = csv.trim().split(/
+?
+/);
+    if (lines.length <= 1) throw new Error('Stooq: no data');
+    const out = [];
+    for(let i=1;i<lines.length;i++){
+      const [date, , , , close] = lines[i].split(',');
+      const c = Number(close); if(!Number.isFinite(c)) continue;
+      out.push({ date, close:c });
+    }
+    out.sort((a,b)=> new Date(a.date)-new Date(b.date));
+    return out;
+  }
+
+  // Yahoo Finance JSON chart API (range + interval)
+  async function fetchYahoo(sym){
+    const range = state.yahooRange || '2y';
+    const interval = clampInterval(range, state.yahooInterval || '1d');
+    const url = `https://query1.finance.yahoo.com/v8/finance/chart/${encodeURIComponent(sym)}?range=${encodeURIComponent(range)}&interval=${encodeURIComponent(interval)}&includePrePost=false&events=div%2Csplit`;
+    const res = await fetch(url, { cache: 'no-store' });
+    if(!res.ok) throw new Error('Yahoo HTTP '+res.status);
+    const j = await res.json();
+    const r = j && j.chart && j.chart.result && j.chart.result[0];
+    if(!r || !r.timestamp) throw new Error('Yahoo: no data');
+    const adj = r.indicators && r.indicators.adjclose && r.indicators.adjclose[0] && r.indicators.adjclose[0].adjclose;
+    const quote = r.indicators && r.indicators.quote && r.indicators.quote[0] && r.indicators.quote[0].close;
+    const closes = adj || quote;
+    if(!closes) throw new Error('Yahoo: no close series');
+    const out = [];
+    for(let i=0;i<r.timestamp.length;i++){
+      const t = r.timestamp[i], c = closes[i];
+      if(c == null) continue;
+      const date = new Date(t*1000).toISOString().slice(0,10);
+      out.push({ date, close: Number(c) });
+    }
+    out.sort((a,b)=> new Date(a.date)-new Date(b.date));
+    return out;
+  }
+
+  // Alpha Vantage (optional)
+  async function fetchAlphaVantage(ticker, apiKey){
+    const url = new URL('https://www.alphavantage.co/query');
+    url.searchParams.set('function','TIME_SERIES_DAILY_ADJUSTED');
+    url.searchParams.set('symbol',ticker);
+    url.searchParams.set('apikey',apiKey);
+    url.searchParams.set('outputsize','compact');
+    const res = await fetch(url.toString());
+    if(!res.ok) throw new Error('AlphaVantage HTTP '+res.status);
+    const txt = await res.text(); let data={};
+    try{ data=JSON.parse(txt); }catch{ throw new Error('AlphaVantage: invalid JSON'); }
+    if(data['Error Message']) throw new Error('AlphaVantage: invalid symbol');
+    if(data['Information'] || data['Note']) throw new Error('AlphaVantage: throttled/key issue');
+    const series = data['Time Series (Daily)']; if(!series) throw new Error('AlphaVantage: no data');
+    return Object.entries(series).map(([date,v])=>({date, close:Number(v['4. close'])})).sort((a,b)=> new Date(a.date)-new Date(b.date));
+  }
+
+  // Unified fetch with smart fallback
+  async function fetchSeries(ticker, apiKey){
+    if(state.dataSource === 'yahoo'){
+      try { return await fetchYahoo(ticker); }
+      catch(e){ try { return await fetchStooq(ticker); } catch { throw e; } }
+    } else if(state.dataSource === 'stooq'){
+      try { return await fetchStooq(ticker); }
+      catch(e){ return fetchYahoo(ticker); }
+    } else { // alphavantage
+      try { return await fetchAlphaVantage(ticker, apiKey); }
+      catch(e){ try { return await fetchYahoo(ticker); } catch { return fetchStooq(ticker); } }
+    }
+  }
+
+  // ---------- UI list + chart ----------
+  function mergeDates(){ const s=new Set(); Object.values(state.series).forEach(pts=> pts.forEach(p=> s.add(p.date))); return Array.from(s).sort((a,b)=> new Date(a)-new Date(b)); }
+  function withinRange(d){ if(!state.range) return true; const x=new Date(d).getTime(); const a=state.range.start? new Date(state.range.start).getTime(): -Infinity; const b=state.range.end? new Date(state.range.end).getTime(): Infinity; return x>=a && x<=b; }
+
+  function drawList(){
+    $list.innerHTML=''; if(state.tickers.length===0){ $empty.style.display='block'; return; } $empty.style.display='none';
+    state.tickers.forEach(t=>{
+      const row=document.createElement('div'); row.className='ticker-item';
+      row.innerHTML = `<div class="dot" style="background:${t.color}"></div><div class="mono" style="width:72px">${t.symbol}</div><div style="margin-left:auto"></div>`;
+      const R=row.children[2];
+      const mk=(txt,cls,fn)=>{ const b=document.createElement('button'); b.textContent=txt; b.className=cls; b.onclick=fn; return b; };
+      R.appendChild(mk(state.loading===t.symbol?'Refreshing…':'Refresh','ghost', ()=>refresh(t.symbol))); R.lastChild.disabled=state.loading===t.symbol;
+      R.appendChild(mk(t.visible?'Hide':'Show','ghost', ()=>toggle(t.symbol)));
+      R.appendChild(mk('Up','ghost', ()=>move(t.symbol,'up')));
+      R.appendChild(mk('Down','ghost', ()=>move(t.symbol,'down')));
+      R.appendChild(mk('Delete','danger', ()=>remove(t.symbol)));
+      $list.appendChild(row);
+    });
+  }
+
+  function draw(){
+    $yUnit.textContent = state.pctMode ? 'Y-axis: % change' : 'Y-axis: USD (Close)';
+    const allDates = mergeDates();
+    const dates = allDates.filter(withinRange);
+    const vis = state.tickers.filter(t=>t.visible).map(t=>t.symbol);
+    const aligned = Object.fromEntries(vis.map(sym=> [sym, []]));
+    dates.forEach(d => { vis.forEach(sym => {
+      const hit=(state.series[sym]||[]).find(p=> p.date===d); aligned[sym].push(hit? hit.close : null);
+    }); });
+
+    if(state.pctMode){
+      vis.forEach(sym=>{
+        const arr=aligned[sym]; const base=arr.find(v=> v!=null);
+        if(base!=null){ for(let i=0;i<arr.length;i++){ arr[i] = arr[i]==null? null : ((arr[i]-base)/base*100); } }
+      });
+    }
+
+    let allVals = vis.flatMap(sym => (aligned[sym]||[]).filter(v=>v!=null));
+    if(state.logMode){ allVals = allVals.filter(v=> v>0); }
+    const minV = allVals.length? Math.min(...allVals) : 0;
+    const maxV = allVals.length? Math.max(...allVals) : 1;
+    const pad=40, w=900, h=380;
+    const yMin = state.logMode ? Math.max(0.0001, minV*0.95) : (minV - (maxV-minV)*0.05);
+    const yMax = state.logMode ? maxV*1.05 : (maxV + (maxV-minV)*0.05);
+    const x = (i) => pad + (i * (w-2*pad)) / Math.max(1, dates.length-1);
+    const y = state.logMode
+      ? (v) => { const log = (z)=> Math.log(z); const a=log(yMin), b=log(yMax); return h - pad - ((log(v) - a) * (h - 2*pad)) / Math.max(1, (b - a)); }
+      : (v) => h - pad - ((v - yMin) * (h - 2*pad)) / Math.max(1, (yMax - yMin));
+
+    const svg=[];
+    svg.push(`<rect x="${pad}" y="${pad}" width="${w-2*pad}" height="${h-2*pad}" fill="none" stroke="${getComputedStyle(document.body).getPropertyValue('--grid2').trim()}" />`);
+
+    for(let k=0;k<5;k++){
+      const t=k/4;
+      let val = state.logMode ? Math.exp(Math.log(yMin) + t*(Math.log(yMax)-Math.log(yMin))) : (yMin + t*(yMax-yMin));
+      const yy = y(val);
+      const label = state.pctMode ? (val.toFixed(1)+'%') : ('$'+val.toFixed(2));
+      svg.push(`<line x1="${pad}" x2="${w-pad}" y1="${yy}" y2="${yy}" stroke="${getComputedStyle(document.body).getPropertyValue('--grid').trim()}" />`);
+      svg.push(`<text x="8" y="${yy+4}" font-size="10" fill="#9fb3d8">${label}</text>`);
+    }
+
+    const step = dates.length ? Math.max(1, Math.floor(dates.length/8)) : 1;
+    for(let i=0;i<dates.length;i+=step){
+      svg.push(`<line x1="${x(i)}" x2="${x(i)}" y1="${h-pad}" y2="${h-pad+4}" stroke="#3b4d75" />`);
+      svg.push(`<text x="${x(i)}" y="${h-pad+16}" font-size="10" text-anchor="middle" fill="#9fb3d8">${dates[i].slice(5)}</text>`);
+    }
+
+    function pathFor(arr){ let d='', started=false; for(let i=0;i<arr.length;i++){ const v=arr[i];
+      if(v==null || (state.logMode && v<=0)){ started=false; continue; } const cmd=started?'L':'M'; started=true; d += `${cmd}${x(i)},${y(v)}`; } return d; }
+    state.tickers.forEach(t=>{ if(!t.visible) return; const arr = aligned[t.symbol]||[]; svg.push(`<path d="${pathFor(arr)}" fill="none" stroke="${t.color}" stroke-width="2.2" />`); });
+
+    svg.push(`<line id="hoverX" class="xline" x1="0" x2="0" y1="${pad}" y2="${h-pad}" style="display:none" />`);
+
+    $chart.innerHTML = svg.join('');
+
+    $legend.innerHTML = '';
+    state.tickers.filter(t=>t.visible).forEach(t=>{
+      const e = document.createElement('div'); e.className='entry';
+      e.innerHTML = `<div class="dot" style="background:${t.color}"></div><div class="mono">${t.symbol}</div>`;
+      $legend.appendChild(e);
+    });
+
+    if(dates.length){
+      const start = dates[0], end = dates[dates.length-1];
+      $dateSummary.textContent = `${start} → ${end}`;
+      if(!$start.value && !$end.value && state.range){
+        $start.value = state.range.start || ''; $end.value = state.range.end || '';
+      }
+    } else { $dateSummary.textContent = ''; }
+
+    const hoverX = document.getElementById('hoverX');
+    const bbox = $chart.getBoundingClientRect();
+    function nearestIndex(px){
+      const localX = px - bbox.left;
+      const i = Math.round((localX - 40) * Math.max(1, dates.length-1) / Math.max(1, (bbox.width - 80)));
+      return Math.max(0, Math.min(dates.length-1, i));
+    }
+    function showTT(i){
+      if(!dates.length) return;
+      const dt = dates[i];
+      const rows = vis.map(sym=>{
+        const arr = aligned[sym]; const v = arr[i];
+        if(v==null || (state.logMode && v<=0)) return null;
+        const col = state.tickers.find(t=>t.symbol===sym).color;
+        return `<div><span style=\"display:inline-block;width:10px;height:10px;background:${col};border-radius:50%;margin-right:6px\"></span><b>${sym}</b>: ${state.pctMode ? v.toFixed(2)+'%' : '$'+v.toFixed(2)}</div>`;
+      }).filter(Boolean).join('');
+      if(!rows){ $tt.style.display='none'; hoverX.style.display='none'; return; }
+      $tt.innerHTML = `<div class=\"mono\" style=\"margin-bottom:4px\">${dt}</div>${rows}`;
+      $tt.style.display = 'block';
+      const px = x(i) / 900 * bbox.width + bbox.left;
+      const py = bbox.top + 60;
+      $tt.style.left = px+'px'; $tt.style.top = py+'px';
+      hoverX.setAttribute('x1', x(i)); hoverX.setAttribute('x2', x(i)); hoverX.style.display='block';
+    }
+    function hideTT(){ $tt.style.display='none'; hoverX.style.display='none'; }
+
+    $chart.onmousemove = (e)=>{ showTT(nearestIndex(e.clientX)); };
+    $chart.onmouseleave = hideTT;
+
+    document.getElementById('exportCsv').onclick = ()=>{
+      const vis = state.tickers.filter(t=>t.visible).map(t=>t.symbol);
+      const dates = mergeDates().filter(withinRange);
+      let header = ['date', ...vis].join(',');
+      let lines = [header];
+      for(let i=0;i<dates.length;i++){
+        const vals = vis.map(sym => {
+          const hit=(state.series[sym]||[]).find(p=> p.date===dates[i]);
+          const v = hit ? hit.close : null;
+          return (v==null || (state.logMode && v<=0)) ? '' : v.toFixed(4);
+        });
+        lines.push([dates[i], ...vals].join(','));
+      }
+      const blob = new Blob([lines.join('
+')], {type:'text/csv'});
+      const a = document.createElement('a');
+      a.href = URL.createObjectURL(blob);
+      a.download = 'pricewave_export.csv';
+      a.click();
+      URL.revokeObjectURL(a.href);
+    };
+  }
+
+  (async function boot(){
+    drawList();
+    if(state.tickers.length===0){ draw(); return; }
+    for(const t of state.tickers){
+      try{ const pts = await debounce(()=>fetchSeries(t.symbol, state.apiKey || 'demo')); state.series[t.symbol]=pts; } catch {}
+    }
+    if(state.range){ $start.value = state.range.start || ''; $end.value = state.range.end || ''; }
+    draw();
+  })();
 })();
 </script>
 </body>
