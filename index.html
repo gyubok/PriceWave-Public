@@ -1,91 +1,32 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-  <meta charset="utf-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>PriceWave</title>
-  <link rel="stylesheet" href="assets/style.css">
-  <script src="https://cdn.jsdelivr.net/npm/chart.js@4"></script>
-  <script src="https://cdn.jsdelivr.net/npm/chartjs-adapter-date-fns@3"></script>
+  <link rel="stylesheet" href="assets/style.css" />
 </head>
 <body>
-  <aside class="sidebar">
-    <div class="brand">Price Wave</div>
+  <header>PriceWave</header>
 
-    <div class="card">
-      <div class="card-title">Search Stocks</div>
-      <input id="searchBox" class="input" placeholder="Search by symbol or name" />
-      <div id="searchResults" class="search-results"></div>
-      <div class="hint">Tip: search uses Alpha Vantage if a key is saved.</div>
+  <div class="panel">
+    <div class="section-title">Settings</div>
+    <div class="field-group">
+      <label for="fmpKey">FMP API Key</label>
+      <input id="fmpKey" placeholder="Enter FMP API Key" />
+      <button onclick="saveFmpKey()">Save</button>
     </div>
+  </div>
 
-    <div class="card">
-      <div class="card-title">Settings</div>
-      <label class="label">Alpha Vantage API key (optional)</label>
-      <div class="row">
-        <input id="apiKey" class="input" placeholder="Paste key (optional)" />
-        <button id="saveKey" class="btn">Save</button>
-        <button id="clearKey" class="btn ghost">Clear</button>
-      </div>
-      <div class="hint">Only needed for Search & Upcoming Earnings. Price data uses Yahoo by default.</div>
-    </div>
+  <div class="panel">
+    <div class="section-title">Upcoming Earnings</div>
+    <div id="earnings-list">Loading...</div>
+  </div>
 
-    <div class="card">
-      <div class="card-title">Upcoming Earnings</div>
-      <div id="earnings" class="earnings">Enter an API key to load upcoming earnings.</div>
-    </div>
-  </aside>
-
-  <main class="main">
-    <section class="card">
-      <div class="row space-between">
-        <div class="section-title">Stock Price Movement</div>
-        <div class="row gap">
-          <label class="label">Range</label>
-          <select id="range" class="input input-inline">
-            <option value="1mo">1M</option>
-            <option value="3mo">3M</option>
-            <option value="6mo">6M</option>
-            <option value="1y">1Y</option>
-            <option value="2y" selected>2Y</option>
-            <option value="5y">5Y</option>
-            <option value="10y">10Y</option>
-            <option value="max">MAX</option>
-          </select>
-          <label class="label">Interval</label>
-          <select id="interval" class="input input-inline">
-            <option value="1d" selected>1d</option>
-            <option value="1wk">1wk</option>
-            <option value="1mo">1mo</option>
-          </select>
-          <button id="togglePct" class="btn ghost">Toggle % Change</button>
-          <button id="toggleLog" class="btn ghost">Toggle Log Scale</button>
-          <button id="exportCsv" class="btn ghost">Export CSV</button>
-        </div>
-      </div>
-      <div class="row gap">
-        <input id="ticker" class="input" placeholder="Add ticker (e.g., AAPL, MSFT, NVDA)" />
-        <button id="add" class="btn primary">Add</button>
-      </div>
-      <div id="error" class="error" style="display:none"></div>
-      <canvas id="chart" height="360"></canvas>
-      <div id="tickerList" class="ticker-list"></div>
-    </section>
-
-    <section class="card">
-      <div class="section-title">Performance Parameters <span id="paramCount" class="badge">0/6</span></div>
-      <div id="params" class="params"></div>
-    </section>
-
-    <section class="card">
-      <div class="section-title">Correlation Analysis Dashboard</div>
-      <div id="correlation" class="corr"></div>
-      <canvas id="scatter" height="260"></canvas>
-      <div class="hint">Correlation values are illustrative until parameter data sources are connected.</div>
-    </section>
-
-    <footer class="footer">Price Wave • v2025.08.17</footer>
-  </main>
+  <footer>
+    PriceWave • v2025.08.18<br />
+    <a href="#">Privacy</a> • <a href="#">About</a>
+  </footer>
 
   <script src="assets/app.js"></script>
 </body>
