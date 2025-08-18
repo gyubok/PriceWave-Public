@@ -1,33 +1,35 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-  <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>PriceWave</title>
-  <link rel="stylesheet" href="assets/style.css" />
+  <link rel="stylesheet" href="assets/style.css">
 </head>
 <body>
-  <header>PriceWave</header>
-
-  <div class="panel">
-    <div class="section-title">Settings</div>
-    <div class="field-group">
-      <label for="fmpKey">FMP API Key</label>
-      <input id="fmpKey" placeholder="Enter FMP API Key" />
-      <button onclick="saveFmpKey()">Save</button>
-    </div>
+  <h1>PriceWave</h1>
+  <div class="card">
+    <h2>Settings</h2>
+    <!-- API key input.  Currently used for Finnhub earnings calendar -->
+    <label for="fmpKey">API Key</label>
+    <input type="text" id="fmpKey" placeholder="Enter your API key" />
+    <button id="saveFmp">Save</button>
+    <button id="clearFmp">Clear</button>
+    <p class="hint">Used for fetching the upcoming earnings calendar from the selected provider (currently Finnhub).</p>
+    <div id="api-status" class="info">No token saved.</div>
   </div>
-
-  <div class="panel">
-    <div class="section-title">Upcoming Earnings</div>
-    <div id="earnings-list">Loading...</div>
+  <div class="card">
+    <h2>Upcoming Earnings</h2>
+    <div id="earnings-list">Enter Finnhub token in Settings.</div>
   </div>
-
-  <footer>
-    PriceWave • v2025.08.18<br />
-    <a href="#">Privacy</a> • <a href="#">About</a>
-  </footer>
-
+  <div class="card">
+    <h2>Stock Search & Price Timeline</h2>
+    <input id="symbolSearch" class="input" placeholder="Search by company name or ticker (e.g., AAPL, NVDA)" />
+    <div id="searchResults" class="search-results"></div>
+    <canvas id="priceChart" height="280"></canvas>
+  </div>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4"></script>
+  <script src="https://cdn.jsdelivr.net/npm/chartjs-adapter-date-fns@3"></script>
   <script src="assets/app.js"></script>
 </body>
 </html>
